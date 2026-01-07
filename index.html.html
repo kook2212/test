@@ -1,75 +1,190 @@
-<!DOCTYPE html>
-<html lang="zh-HK">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HA Citrix 模擬測試工具</title>
-    <style>
-        body { font-family: "Microsoft JhengHei", Arial, sans-serif; padding: 40px; background-color: #f0f2f5; }
-        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        h1 { color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px; }
-        .test-block { margin-bottom: 30px; padding: 20px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa; }
-        .btn { display: inline-block; padding: 12px 24px; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; cursor: pointer; border: none; font-size: 16px; margin-top: 10px; }
-        .btn-blue { background-color: #0078d4; }
-        .btn-blue:hover { background-color: #0063b1; }
-        .btn-green { background-color: #107c10; }
-        .btn-green:hover { background-color: #0b5a0b; }
-        .status { margin-top: 10px; font-size: 0.9em; color: #666; }
-        .note { background: #fff3cd; color: #856404; padding: 10px; border-radius: 5px; margin-bottom: 20px; border: 1px solid #ffeeba; }
-    </style>
-</head>
-<body>
+import React, { useState } from 'react';
+import { Download, Monitor, AlertTriangle, CheckCircle, FileText, XCircle } from 'lucide-react';
 
-<div class="container">
-    <h1>🏥 HA Citrix 模擬測試工具</h1>
-    
-    <div class="note">
-        <strong>⚠️ 重要：</strong> 請勿直接雙擊此檔案開啟。請將此檔案放入 IIS，或使用 Python <code>python -m http.server</code> 啟動，以模擬真實網站行為。
-    </div>
+export default function CitrixSimulationTool() {
+  const [downloadStatus, setDownloadStatus] = useState('idle'); // idle, downloading, downloaded
 
-    <!-- 測試 1: 模擬 ICA 檔案下載 (最常見的 HA 模式) -->
-    <div class="test-block">
-        <h3>測試 A：模擬 ICA 檔案下載 (最常見模式)</h3>
-        <p>這是模擬 HA 系統生成一個 <code>.ica</code> 檔案並傳送給瀏覽器的過程。</p>
-        <p><strong>預期結果：</strong> 瀏覽器應該要自動下載並<b>自動彈出</b> Citrix 視窗（顯示錯誤沒關係，重點是有彈出）。</p>
-        <button id="downloadBtn" class="btn btn-green" onclick="downloadICA()">模擬下載 ICA 檔案</button>
-        <div id="msgA" class="status"></div>
-    </div>
-
-    <!-- 測試 2: 模擬 Protocol Handler -->
-    <div class="test-block">
-        <h3>測試 B：模擬 Protocol 呼叫 (新版模式)</h3>
-        <p>這是模擬瀏覽器直接呼叫應用程式。</p>
-        <p><strong>預期結果：</strong> 瀏覽器不應詢問，直接彈出 Citrix。</p>
-        <a href="citrixreceiver://test_probe" class="btn btn-blue" onclick="document.getElementById('msgB').innerText='已發送呼叫請求...'">測試 Protocol 啟動</a>
-        <div id="msgB" class="status"></div>
-    </div>
-</div>
-
-<script>
-    function downloadICA() {
-        // 1. 建立一個假的 ICA 檔案內容
-        const icaContent = `[Encoding]\nInputEncoding=UTF8\n\n[WFClient]\nVersion=2\nClientName=TestStation\n\n[ApplicationServers]\nTestApp=\n\n[TestApp]\nAddress=127.0.0.1\nInitialProgram=#TestApp`;
-        
-        // 2. 建立 Blob 物件，強制設定 MIME type 為 application/x-ica
-        // 這就是告訴瀏覽器「這是一個 Citrix 檔案」的關鍵
-        const blob = new Blob([icaContent], { type: 'application/x-ica' });
-        const url = window.URL.createObjectURL(blob);
-        
-        // 3. 建立虛擬下載連結並點擊
-        const a = document.createElement('a');
-        a.style.display = 'none';
-        a.href = url;
-        a.download = 'simulation_test.ica'; // 設定檔名
-        
-        document.body.appendChild(a);
-        a.click();
-        
-        // 清理
-        window.URL.revokeObjectURL(url);
-        document.getElementById('msgA').innerText = '已觸發下載，請觀察瀏覽器是否自動開啟檔案...';
+  // 生成一個看起來像真實 Citrix Session 的隨機長字串 (模擬 Key/Ticket)
+  const generateFakeTicket = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    let result = '';
+    for (let i = 0; i < 600; i++) { // 模擬一個很長的加密票據
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
     }
-</script>
+    return result + '=';
+  };
 
-</body>
-</html>
+  const handleDownloadICA = () => {
+    setDownloadStatus('downloading');
+
+    const fakeTicket = generateFakeTicket();
+    const timestamp = new Date().getTime();
+    
+    // 這是模仿真實 Citrix StoreFront 產生的標準 .ica 檔案結構
+    // 我們加入了 Address, TransportDriver, 以及最重要的 LaunchReference
+    const icaContent = `[Encoding]
+InputEncoding=UTF8
+
+[WFClient]
+Version=2
+ClientName=WI_User
+ProxyFavorIEConnectionSetting=Yes
+ProxyUseDefault=On
+RemoveICAFile=Yes
+TransportReconnectEnabled=Off
+
+[ApplicationServers]
+Simulation_Session=
+
+[Simulation_Session]
+Address=127.0.0.1:1494
+InitialProgram=#Simulation_Session
+LongCommandLine=
+DesiredColor=8
+TransportDriver=TCP/IP
+WinStationDriver=ICA 3.0
+AutologonAllowed=ON
+Username=TestUser
+Domain=TESTDOMAIN
+DoNotUseDefaultCSL=On
+FontSmoothingType=0
+LaunchReference=${fakeTicket}
+LocHttpBrowserAddress=!
+LogonTicket=${fakeTicket}
+LogonTicketType=CTXS1
+`;
+
+    // 建立 Blob 物件
+    const blob = new window.Blob([icaContent], { type: 'application/x-ica' });
+    
+    // 建立下載連結
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    // 檔名加上時間戳，確保每次都是新的
+    link.setAttribute('download', `launch_simulation_${timestamp}.ica`);
+    
+    // 觸發下載
+    document.body.appendChild(link);
+    link.click();
+    
+    // 清理
+    link.parentNode.removeChild(link);
+    window.URL.revokeObjectURL(url);
+
+    setDownloadStatus('downloaded');
+    
+    // 3秒後重置狀態
+    setTimeout(() => setDownloadStatus('idle'), 3000);
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-4 md:p-8 font-sans text-gray-800">
+      <div className="max-w-3xl mx-auto bg-white shadow-xl rounded-xl overflow-hidden border border-gray-200">
+        
+        {/* Header */}
+        <div className="bg-gradient-to-r from-purple-700 to-indigo-800 p-6 text-white">
+          <div className="flex items-center gap-3 mb-2">
+            <Monitor className="w-8 h-8" />
+            <h1 className="text-2xl font-bold">HA Citrix 進階模擬測試工具 (V2.0)</h1>
+          </div>
+          <p className="text-purple-100 opacity-90">
+            生成仿真 ICA 結構檔案，測試瀏覽器與 Citrix Workspace 的關聯性。
+          </p>
+        </div>
+
+        <div className="p-6 space-y-8">
+          
+          {/* 說明區塊 */}
+          <div className="bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded-r-md">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-6 h-6 text-yellow-600 flex-shrink-0 mt-1" />
+              <div>
+                <h3 className="font-bold text-yellow-800">測試原理說明</h3>
+                <p className="text-sm text-yellow-700 mt-1 leading-relaxed">
+                  此工具會生成一個包含完整 Header 和模擬加密金鑰 (LaunchReference) 的 <code>.ica</code> 檔案。
+                  <br/><br/>
+                  <strong>預期結果：</strong> 當您下載並開啟此檔案時，Citrix 程式應該會啟動，嘗試連線，然後彈出一個錯誤視窗（例如「無法連線到伺服器」或「通訊協定錯誤」）。
+                  <br/>
+                  <span className="font-bold text-red-600">注意：只要 Citrix 的錯誤視窗有跳出來，就代表修復成功！</span> 因為我們沒有連線到真正的醫院伺服器，報錯是正常的。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* 測試區塊 */}
+          <div className="border border-gray-200 rounded-lg p-6 bg-white shadow-sm">
+            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+              <FileText className="w-5 h-5 text-indigo-600" />
+              測試步驟：下載仿真檔案
+            </h2>
+            
+            <p className="text-gray-600 mb-6">
+              點擊下方按鈕，瀏覽器將下載一個名為 <code>launch_simulation_xxxx.ica</code> 的檔案。
+              請觀察瀏覽器是否會自動呼叫 Citrix 開啟它。
+            </p>
+
+            <div className="flex flex-col sm:flex-row items-center gap-4">
+              <button
+                onClick={handleDownloadICA}
+                className={`flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-bold text-white transition-all shadow-md w-full sm:w-auto
+                  ${downloadStatus === 'downloading' 
+                    ? 'bg-gray-400 cursor-not-allowed' 
+                    : 'bg-green-600 hover:bg-green-700 active:scale-95'}`}
+                disabled={downloadStatus === 'downloading'}
+              >
+                {downloadStatus === 'downloading' ? (
+                  <>處理中...</>
+                ) : (
+                  <>
+                    <Download className="w-5 h-5" />
+                    下載仿真 ICA 檔案 (含 Key)
+                  </>
+                )}
+              </button>
+
+              {downloadStatus === 'downloaded' && (
+                <span className="text-green-600 flex items-center gap-1 text-sm font-medium animate-pulse">
+                  <CheckCircle className="w-4 h-4" />
+                  檔案已送出
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* 結果判讀指南 */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-green-50 p-4 rounded-lg border border-green-100">
+              <h4 className="font-bold text-green-800 flex items-center gap-2 mb-2">
+                <CheckCircle className="w-5 h-5" />
+                成功跡象
+              </h4>
+              <ul className="text-sm text-green-700 space-y-1 list-disc list-inside">
+                <li>瀏覽器沒有詢問「要儲存嗎」，直接執行。</li>
+                <li>畫面閃過 Citrix Workspace 的讀取視窗。</li>
+                <li>最後跳出 Citrix 的錯誤訊息視窗 (Connection Error)。</li>
+              </ul>
+            </div>
+
+            <div className="bg-red-50 p-4 rounded-lg border border-red-100">
+              <h4 className="font-bold text-red-800 flex items-center gap-2 mb-2">
+                <XCircle className="w-5 h-5" />
+                失敗跡象
+              </h4>
+              <ul className="text-sm text-red-700 space-y-1 list-disc list-inside">
+                <li>檔案只是被下載到資料夾，什麼事都沒發生。</li>
+                <li>瀏覽器問你「要用什麼程式開啟」。</li>
+                <li>Windows 彈出記事本 (Notepad) 顯示亂碼。</li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="text-center text-xs text-gray-400 mt-8">
+            此工具僅供客戶端環境測試，不涉及任何真實 HA 系統連線。
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+}
